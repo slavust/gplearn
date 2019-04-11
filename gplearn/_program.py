@@ -162,7 +162,7 @@ class _Program(object):
         self._max_samples = None
         self._indices_state = None
 
-    def build_program(self, random_state):
+    def build_program(self, random_state, units = tuple()):
         """Build a naive random program.
 
         Parameters
@@ -176,12 +176,23 @@ class _Program(object):
             The flattened tree representation of the program.
 
         """
+        if len(units) > 0:
+            assert self.init_method == 'dimensional'
         if self.init_method == 'half and half':
             method = ('full' if random_state.randint(2) else 'grow')
         else:
             method = self.init_method
         max_depth = random_state.randint(*self.init_depth)
 
+        if method != 'dimensional':
+            return self.__build_program_nondimensional(random_state, max_depth)
+        else:
+            return self.__build_program_dimensional(random_state, max_depth, units)
+
+    def __build_program_dimensional(self, random_state, max_depth, units):
+        
+
+    def __build_program_nondimensional(self, random_state, max_depth):
         # Start a program with a function to avoid degenerative programs
         function = random_state.randint(len(self.function_set))
         function = self.function_set[function]
@@ -486,7 +497,7 @@ class _Program(object):
         penalty = parsimony_coefficient * len(self.program) * self.metric.sign
         return self.raw_fitness_ - penalty
 
-    def get_subtree(self, random_state, program=None):
+    def get_subtree(self, random_state, program=None, units=[]):
         """Get a random subtree from the program.
 
         Parameters
@@ -506,8 +517,7 @@ class _Program(object):
         """
         if program is None:
             program = self.program
-        # Choice of crossover points follows Koza's (1992) widely used approach
-        # of choosing functions 90% of the time and leaves 10% of the time.
+
         probs = np.array([0.9 if isinstance(node, _Function) else 0.1
                           for node in program])
         probs = np.cumsum(probs / probs.sum())
@@ -549,10 +559,12 @@ class _Program(object):
 
         """
         # Get a subtree to replace
-        start, end = self.get_subtree(random_state)
+        start, end, units = self.get_subtree(random_state)
         removed = range(start, end)
         # Get a subtree to donate
-        donor_start, donor_end = self.get_subtree(random_state, donor)
+        donor_start, donor_end, _ = self.get_subtree(random_state, donor, units)
+        if donor_start == donor_end:
+            raise NonCompatibleParents()
         donor_removed = list(set(range(len(donor))) -
                              set(range(donor_start, donor_end)))
         # Insert genetic material from donor

@@ -79,7 +79,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
 
             if method < method_probs[0]:
                 # crossover
-                donor, donor_index = _tournament()
+                donor, donor_index = _tournament() # choose from ones whiches can be crossed with regard to dimensions (almost any?)?
                 program, removed, remains = parent.crossover(donor.program,
                                                              random_state)
                 genome = {'method': 'Crossover',
@@ -256,7 +256,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                                      oob_fitness,
                                      remaining_time))
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self, X, y, X_dim=None, y_dim=None, sample_weight=None):
         """Fit the Genetic Program according to X, y.
 
         Parameters
