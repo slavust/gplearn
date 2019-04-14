@@ -16,6 +16,7 @@ from sklearn.utils.random import sample_without_replacement
 
 from .functions import _Function
 from .utils import check_random_state
+import dimensional
 
 
 class _Program(object):
@@ -132,6 +133,9 @@ class _Program(object):
                  parsimony_coefficient,
                  random_state,
                  transformer=None,
+                 dimensional_max_power=None,
+                 dimensional_required_units=None,
+                 dimensional_quantities_units=None,
                  feature_names=None,
                  program=None):
 
@@ -145,6 +149,9 @@ class _Program(object):
         self.p_point_replace = p_point_replace
         self.parsimony_coefficient = parsimony_coefficient
         self.transformer = transformer
+        self.dimensional_max_power = dimensional_max_power
+        self.dimensional_required_units = dimensional_required_units
+        self.dimensional_quantities_units = dimensional_quantities_units
         self.feature_names = feature_names
         self.program = program
 
@@ -153,7 +160,8 @@ class _Program(object):
                 raise ValueError('The supplied program is incomplete.')
         else:
             # Create a naive random program
-            self.program = self.build_program(random_state)
+            self.program = self.build_program(
+                random_state)
 
         self.raw_fitness_ = None
         self.fitness_ = None
@@ -162,7 +170,7 @@ class _Program(object):
         self._max_samples = None
         self._indices_state = None
 
-    def build_program(self, random_state, units = tuple()):
+    def build_program(self, random_state):
         """Build a naive random program.
 
         Parameters
@@ -176,7 +184,7 @@ class _Program(object):
             The flattened tree representation of the program.
 
         """
-        if len(units) > 0:
+        if len(self.dimensional_required_units) > 0:
             assert self.init_method == 'dimensional'
         if self.init_method == 'half and half':
             method = ('full' if random_state.randint(2) else 'grow')
@@ -185,14 +193,28 @@ class _Program(object):
         max_depth = random_state.randint(*self.init_depth)
 
         if method != 'dimensional':
-            return self.__build_program_nondimensional(random_state, max_depth)
+            return self.__build_program_nondimensional(
+                method,
+                max_depth,
+                random_state)
         else:
-            return self.__build_program_dimensional(random_state, max_depth, units)
+            return self.__build_program_dimensional(
+                random_state,
+                max_depth,
+                self.dimensional_required_units,
+                self.dimensional_quantities_units)
 
-    def __build_program_dimensional(self, random_state, max_depth, units):
-        
+    def __build_program_dimensional(self, random_state, max_depth, required_units, quantities_units):
+        return dimensional.build_program(
+            required_units,
+            quantities_units,
+            max_depth,
+            self.n_features,
+            self.dimensional_max_power,
+            self.function_set,
+            random_state)
 
-    def __build_program_nondimensional(self, random_state, max_depth):
+    def __build_program_nondimensional(self, method, max_depth, random_state):
         # Start a program with a function to avoid degenerative programs
         function = random_state.randint(len(self.function_set))
         function = self.function_set[function]

@@ -137,6 +137,7 @@ add2 = make_function(function=np.add, name='add', arity=2)
 sub2 = make_function(function=np.subtract, name='sub', arity=2)
 mul2 = make_function(function=np.multiply, name='mul', arity=2)
 div2 = make_function(function=_protected_division, name='div', arity=2)
+pow2 = make_function(function=np.power, name='pow', arity=2)
 sqrt1 = make_function(function=_protected_sqrt, name='sqrt', arity=1)
 log1 = make_function(function=_protected_log, name='log', arity=1)
 neg1 = make_function(function=np.negative, name='neg', arity=1)
@@ -153,6 +154,7 @@ _function_map = {'add': add2,
                  'sub': sub2,
                  'mul': mul2,
                  'div': div2,
+                 'pow': pow2,
                  'sqrt': sqrt1,
                  'log': log1,
                  'abs': abs1,
