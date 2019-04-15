@@ -15,7 +15,7 @@ import numpy as np
 from sklearn.utils.random import sample_without_replacement
 
 from .functions import _Function
-from .utils import check_random_state
+from .utils import check_random_state, NotCompatibleParents
 import dimensional
 
 
@@ -586,7 +586,7 @@ class _Program(object):
         # Get a subtree to donate
         donor_start, donor_end, _ = self.get_subtree(random_state, donor, units)
         if donor_start == donor_end:
-            raise NonCompatibleParents()
+            raise NotCompatibleParents()
         donor_removed = list(set(range(len(donor))) -
                              set(range(donor_start, donor_end)))
         # Insert genetic material from donor

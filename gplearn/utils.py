@@ -35,6 +35,11 @@ class NotFittedError(ValueError, AttributeError):
     """
 
 
+class NotCompatibleParents(ValueError):
+    """Exception lass used during crossover with dimensional
+    analysis is enabled. Used to search other parent."""
+
+
 def check_random_state(seed):
     """Turn seed into a np.random.RandomState instance
 
