@@ -211,6 +211,7 @@ class _Program(object):
             max_depth,
             self.n_features,
             self.dimensional_max_power,
+            self.const_range,
             self.function_set,
             random_state)
 
