@@ -50,18 +50,25 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     p_point_replace = params['p_point_replace']
     max_samples = params['max_samples']
     feature_names = params['feature_names']
+    dimensional_max_power = params['dimensional_max_power']
+    dimensional_required_units = params['dimensional_required_units']
+    dimensional_quantities_units = params['dimensional_quantities_units']
 
     max_samples = int(max_samples * n_samples)
 
-    def _tournament():
+    def _tournament(acceptance_func = None):
         """Find the fittest individual from a sub-population."""
-        contenders = random_state.randint(0, len(parents), tournament_size)
-        fitness = [parents[p].fitness_ for p in contenders]
+        if acceptance_func is not None:
+            acceptables = [p for p in parents if acceptance_func(p)]
+        else:
+            acceptables = parents
+        contenders = random_state.randint(0, len(acceptables), tournament_size)
+        fitness = [acceptables[a].fitness_ for a in contenders]
         if metric.greater_is_better:
             parent_index = contenders[np.argmax(fitness)]
         else:
             parent_index = contenders[np.argmin(fitness)]
-        return parents[parent_index], parent_index
+        return acceptables[parent_index], parents.index(acceptables[parent_index])
 
     # Build programs
     programs = []
@@ -79,8 +86,8 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
 
             if method < method_probs[0]:
                 # crossover
-                donor, donor_index = _tournament() # choose from ones whiches can be crossed with regard to dimensions (almost any?)?
-                program, removed, remains = parent.crossover(donor.program,
+                donor, donor_index = _tournament(parent.get_donor_acceptance_func())
+                program, removed, remains = parent.crossover(donor,
                                                              random_state)
                 genome = {'method': 'Crossover',
                           'parent_idx': parent_index,
@@ -94,6 +101,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
                           'parent_idx': parent_index,
                           'parent_nodes': removed}
             elif method < method_probs[2]:
+                assert False
                 # hoist_mutation
                 program, removed = parent.hoist_mutation(random_state)
                 genome = {'method': 'Hoist Mutation',
@@ -122,8 +130,11 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
                            const_range=const_range,
                            p_point_replace=p_point_replace,
                            parsimony_coefficient=parsimony_coefficient,
-                           feature_names=feature_names,
                            random_state=random_state,
+                           dimensional_max_power=dimensional_max_power,
+                           dimensional_required_units=dimensional_required_units,
+                           dimensional_quantities_units=dimensional_quantities_units,
+                           feature_names=feature_names,
                            program=program)
 
         program.parents = genome
@@ -182,6 +193,9 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                  p_point_mutation=0.01,
                  p_point_replace=0.05,
                  max_samples=1.0,
+                 max_dimensional_power=None,
+                 required_units=None,
+                 quantities_units=None,
                  feature_names=None,
                  warm_start=False,
                  low_memory=False,
@@ -214,6 +228,8 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         self.n_jobs = n_jobs
         self.verbose = verbose
         self.random_state = random_state
+
+        self.dimensional_max_power = max_dimensional_power
 
     def _verbose_reporter(self, run_details=None):
         """A report of the progress of the evolution process.
@@ -256,7 +272,12 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                                      oob_fitness,
                                      remaining_time))
 
-    def fit(self, X, y, X_dim=None, y_dim=None, sample_weight=None):
+    def fit(self,
+            X,
+            y,
+            X_dimensions=None,
+            y_dimension=None,
+            sample_weight=None):
         """Fit the Genetic Program according to X, y.
 
         Parameters
@@ -410,6 +431,8 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         params['function_set'] = self._function_set
         params['arities'] = self._arities
         params['method_probs'] = self._method_probs
+        params['dimensional_required_units']=y_dimension
+        params['dimensional_quantities_units']=X_dimensions
 
         if not self.warm_start or not hasattr(self, '_programs'):
             # Free allocated memory, if any

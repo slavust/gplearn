@@ -9,12 +9,13 @@ def random_power(max_power, random_state):
 
 
 class HelperTree(object):
-    def __init__(self, node, children=list()):
+    def __init__(self, node, units, children=list()):
         self.node = node
+        self.units = units
         self.children = children
 
     def flatten(self):
-        flattened_tree = [self.node]
+        flattened_tree = [(self.node, self.units)]
         for child in self.children:
             flattened_tree += child.flatten()
         return flattened_tree
@@ -24,21 +25,21 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
     num_rows = len(quantities_units)
     assert num_rows > 0
     num_cols = len(quantities_units[0])
-    assert num_cols > 0
-    assert num_rows == len(root_node_units)
+    assert num_rows > 0
+    assert num_cols == len(root_node_units)
 
-    # solve linear equation system find applicable powers of quantities
-    A = sp.Matrix(quantities_units)
-    X = sp.Matrix(num_cols, 1, sp.symbols('x0:{}'.format(num_cols)))
-    Y = sp.Matrix(num_rows, 1, root_node_units)
-    eq = list(A*X-Y)
-    variables = list(X)
+    # solve linear equation system to find applicable powers of quantities
+    unit_matrix = sp.Matrix(quantities_units)
+    unit_matrix.transpose() # input form should be [quantity_units_1, ..., quantity_units_n]
+    unknowns = sp.Matrix(num_rows, 1, sp.symbols('x0:{}'.format(num_cols)))
+    free_coefficients = sp.Matrix(num_cols, 1, root_node_units)
+    eq = list(unit_matrix*unknowns-free_coefficients)
+    variables = list(unknowns)
 
     solutions = sp.solve(eq, variables, dict=True)
     if len(solutions) == 0:
         raise ValueError('Required units cannot be derived from given quantities')
     solution = solutions[0]
-    print(solutions)
 
     dependent_variables = set(solution.keys())
     all_variables = set(variables)
@@ -52,14 +53,18 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
     all_variable_values = {**free_variable_values, **dependent_variable_values}
     powers = [sp.Rational(all_variable_values[var]) for var in variables]
 
-    all_powers_zeroes = all([True if p == 0 else False for p in powers])
+    all_powers_zeroes = all([p == 0 for p in powers])
     if all_powers_zeroes:
-        return HelperTree(1.0)
+        return HelperTree(node=1.0, units=powers)
 
-    def make_power_tree(base, power, pow_func):
-        base = HelperTree(base)
-        power = HelperTree(power)
-        return HelperTree(pow_func, [base, power])
+    def make_power_tree(base, base_units, power, pow_func):
+        base = HelperTree(node=base, units=base_units)
+        power = HelperTree(node=power, units=(0,)*len(base_units))
+        powered_units = (unit_pow * power for unit_pow in base_units)
+        return HelperTree(
+            node=pow_func,
+            units=powered_units,
+            children=[base, power])
 
     def make_balanced_mul_tree(multiplier_list, mul_func):
         multiplier_count = len(multiplier_list)
@@ -71,14 +76,26 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
 
         left_subtree = make_balanced_mul_tree(multiplier_list[:center_indx], mul_func)
         right_subtree = make_balanced_mul_tree(multiplier_list[center_indx:], mul_func)
-        root_node = HelperTree(mul_func, [left_subtree, right_subtree])
+        left_units = left_subtree.node[1]
+        right_units = right_subtree.node[1]
+        assert len(left_units) == len(right_units)
+        result_units = (left_unit_pow + right_unit_pow
+                        for left_unit_pow, right_unit_pow in zip(left_units, right_units))
+        root_node = HelperTree(
+            node=mul_func,
+            units=result_units,
+            children=[left_subtree, right_subtree])
 
         return root_node
 
     feature_count = len(quantities_units[0])
     quantities_in_powers = [
-        make_power_tree(feature_indx, power, function_map['pow'])
-        for feature_indx, power in zip(range(feature_count), powers)]
+        make_power_tree(
+            feature_indx,
+            quantities_units[feature_count],
+            powers[feature_indx],
+            function_map['pow'])
+        for feature_indx in range(feature_count)]
     mul_tree = make_balanced_mul_tree(quantities_in_powers, function_map['mul'])
 
     return mul_tree
@@ -94,7 +111,7 @@ def generate_tree(
         dimensional_functions_map,
         nondimensional_functions_list,
         random_state):
-    base_unit_count = len(root_node_units)
+    base_unit_count = len(root_node_units[0])
     dimensional = (root_node_units != [0]*base_unit_count)
 
     # The only two functions that transform dimensionality are 'pow' and 'mul'
@@ -136,8 +153,12 @@ def generate_tree(
                 dimensional_functions_map,
                 nondimensional_functions_list,
                 random_state)
+            assert left_subtree.units == right_subtree.units == root_node_units
             # TODO: isn't it required to add some nondimensional operations here?
-            return HelperTree(dimensional_functions_map['add'], [left_subtree, right_subtree])
+            return HelperTree(
+                node=dimensional_functions_map['add'],
+                units=root_node_units,
+                children=[left_subtree, right_subtree])
         elif option_choice == 'sub':
             left_subtree = generate_tree(
                 root_node_units,
@@ -159,8 +180,12 @@ def generate_tree(
                 dimensional_functions_map,
                 nondimensional_functions_list,
                 random_state)
+            assert left_subtree.units == right_subtree.units == root_node_units
             # TODO: isn't it required to add some nondimensional operations here?
-            return HelperTree(dimensional_functions_map['sub'], [left_subtree, right_subtree])
+            return HelperTree(
+                node=dimensional_functions_map['add'],
+                units=root_node_units,
+                children=[left_subtree, right_subtree])
         elif option_choice == 'mul_nondimensional':
             left_subtree = generate_tree(
                 [0]*base_unit_count,
@@ -182,7 +207,11 @@ def generate_tree(
                 dimensional_functions_map,
                 nondimensional_functions_list,
                 random_state)
-            return HelperTree(dimensional_functions_map['mul'], [left_subtree, right_subtree])
+            assert right_subtree.units == root_node_units
+            return HelperTree(
+                node=dimensional_functions_map['mul'],
+                units=root_node_units,
+                children=[left_subtree, right_subtree])
         elif option_choice == 'mul_power_tree':
             # the only functions that can change expression dimensionality are mul and pow on quantities
             return generate_mul_tree(
@@ -201,13 +230,15 @@ def generate_tree(
         option_indx = random_state.randint(len(allowed_options))
         option_choice = allowed_options[option_indx]
 
+        unitless = root_node_units
+
         if option_choice == 'constant':
-            # TODO
+            # TODO: unitless features?
             number = random_state.uniform(*const_range)
-            return HelperTree(number)
+            return HelperTree(node=number, units=unitless)
         elif option_choice == 'mul_power_tree':
             return generate_mul_tree(
-                root_node_units,
+                unitless,
                 quantities_units,
                 max_power,
                 dimensional_functions_map,
@@ -216,7 +247,7 @@ def generate_tree(
             operator_indx = random_state.randint(len(nondimensional_functions_list))
             operator = nondimensional_functions_list[operator_indx]
             operands = [generate_tree(
-                        [0]*base_unit_count,
+                        unitless,
                         quantities_units,
                         depth-1,
                         n_features,
@@ -225,7 +256,7 @@ def generate_tree(
                         dimensional_functions_map,
                         nondimensional_functions_list,
                         random_state) for _ in range(operator.arity)]
-            return HelperTree(operator, operands)
+            return HelperTree(node=operator, units=unitless, children=operands)
         else:
             assert False
 
