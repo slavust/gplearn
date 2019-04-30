@@ -10,6 +10,7 @@ def random_power(max_power, random_state):
 
 class HelperTree(object):
     def __init__(self, node, units, children=list()):
+        assert isinstance(units, tuple)
         self.node = node
         self.units = units
         self.children = children
@@ -30,10 +31,9 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
 
     # solve linear equation system to find applicable powers of quantities
     unit_matrix = sp.Matrix(quantities_units)
-    unit_matrix.transpose() # input form should be [quantity_units_1, ..., quantity_units_n]
-    unknowns = sp.Matrix(num_rows, 1, sp.symbols('x0:{}'.format(num_cols)))
-    free_coefficients = sp.Matrix(num_cols, 1, root_node_units)
-    eq = list(unit_matrix*unknowns-free_coefficients)
+    unknowns = sp.Matrix(1, num_rows, sp.symbols('x0:{}'.format(num_rows)))
+    free_coefficients = sp.Matrix(1, num_cols, root_node_units)
+    eq = list(unknowns*unit_matrix-free_coefficients)
     variables = list(unknowns)
 
     solutions = sp.solve(eq, variables, dict=True)
@@ -51,20 +51,20 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
             solution[v].evalf(subs=free_variable_values)
         ) for v in dependent_variables}
     all_variable_values = {**free_variable_values, **dependent_variable_values}
-    powers = [sp.Rational(all_variable_values[var]) for var in variables]
+    powers = tuple(sp.Rational(all_variable_values[var]) for var in variables)
 
     all_powers_zeroes = all([p == 0 for p in powers])
     if all_powers_zeroes:
         return HelperTree(node=1.0, units=powers)
 
     def make_power_tree(base, base_units, power, pow_func):
-        base = HelperTree(node=base, units=base_units)
-        power = HelperTree(node=power, units=(0,)*len(base_units))
-        powered_units = (unit_pow * power for unit_pow in base_units)
+        base_node = HelperTree(node=base, units=base_units)
+        power_node = HelperTree(node=power, units=(0,)*len(base_units))
+        power_node_units = tuple(unit_pow * power for unit_pow in base_units)
         return HelperTree(
             node=pow_func,
-            units=powered_units,
-            children=[base, power])
+            units=power_node_units,
+            children=[base_node, power_node])
 
     def make_balanced_mul_tree(multiplier_list, mul_func):
         multiplier_count = len(multiplier_list)
@@ -76,10 +76,10 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
 
         left_subtree = make_balanced_mul_tree(multiplier_list[:center_indx], mul_func)
         right_subtree = make_balanced_mul_tree(multiplier_list[center_indx:], mul_func)
-        left_units = left_subtree.node[1]
-        right_units = right_subtree.node[1]
+        left_units = left_subtree.units
+        right_units = right_subtree.units
         assert len(left_units) == len(right_units)
-        result_units = (left_unit_pow + right_unit_pow
+        result_units = tuple(left_unit_pow + right_unit_pow
                         for left_unit_pow, right_unit_pow in zip(left_units, right_units))
         root_node = HelperTree(
             node=mul_func,
@@ -88,11 +88,11 @@ def generate_mul_tree(root_node_units, quantities_units, max_power, function_map
 
         return root_node
 
-    feature_count = len(quantities_units[0])
+    feature_count = len(quantities_units)
     quantities_in_powers = [
         make_power_tree(
             feature_indx,
-            quantities_units[feature_count],
+            quantities_units[feature_indx],
             powers[feature_indx],
             function_map['pow'])
         for feature_indx in range(feature_count)]
@@ -111,8 +111,10 @@ def generate_tree(
         dimensional_functions_map,
         nondimensional_functions_list,
         random_state):
-    base_unit_count = len(root_node_units[0])
-    dimensional = (root_node_units != [0]*base_unit_count)
+    assert len(root_node_units) != 0
+    base_unit_count = len(root_node_units)
+    unitless = (0,)*len(root_node_units)
+    is_dimensional = any(power != 0 for power in root_node_units)
 
     # The only two functions that transform dimensionality are 'pow' and 'mul'
     # so minimum depth tree that produces required units from input quantities
@@ -125,7 +127,7 @@ def generate_tree(
     average_min_depth = int(np.log2(average_min_depth_multiplier_count)) + 1 # power node adds 1
     required_to_build_minimal_tree = depth <= average_min_depth
 
-    if dimensional:
+    if is_dimensional:
         if required_to_build_minimal_tree:
             allowed_options = ['mul_power_tree']
         else:
@@ -180,7 +182,7 @@ def generate_tree(
                 dimensional_functions_map,
                 nondimensional_functions_list,
                 random_state)
-            assert left_subtree.units == right_subtree.units == root_node_units
+            assert left_subtree.units == right_subtree.units == tuple(root_node_units)
             # TODO: isn't it required to add some nondimensional operations here?
             return HelperTree(
                 node=dimensional_functions_map['add'],
@@ -188,7 +190,7 @@ def generate_tree(
                 children=[left_subtree, right_subtree])
         elif option_choice == 'mul_nondimensional':
             left_subtree = generate_tree(
-                [0]*base_unit_count,
+                unitless,
                 quantities_units,
                 depth - 1,
                 n_features,
@@ -229,8 +231,6 @@ def generate_tree(
             allowed_options = ['constant', 'mul_power_tree', 'nondim_func']
         option_indx = random_state.randint(len(allowed_options))
         option_choice = allowed_options[option_indx]
-
-        unitless = root_node_units
 
         if option_choice == 'constant':
             # TODO: unitless features?
@@ -285,7 +285,7 @@ def debug_render_tree(helper_tree):
 
     dot.render('debug.gv', view=True)
 
-def build_program(
+def build_dimensional_program(
         root_node_units,
         quantities_units,
         depth,

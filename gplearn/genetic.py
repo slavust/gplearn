@@ -193,9 +193,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                  p_point_mutation=0.01,
                  p_point_replace=0.05,
                  max_samples=1.0,
-                 max_dimensional_power=None,
-                 required_units=None,
-                 quantities_units=None,
+                 dimensional_max_power=None,
                  feature_names=None,
                  warm_start=False,
                  low_memory=False,
@@ -229,7 +227,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
         self.verbose = verbose
         self.random_state = random_state
 
-        self.dimensional_max_power = max_dimensional_power
+        self.dimensional_max_power = dimensional_max_power
 
     def _verbose_reporter(self, run_details=None):
         """A report of the progress of the evolution process.
@@ -382,7 +380,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                              'p_hoist_mutation and p_point_mutation should '
                              'total to 1.0 or less.')
 
-        if self.init_method not in ('half and half', 'grow', 'full'):
+        if self.init_method not in ('half and half', 'grow', 'full', 'dimensional'):
             raise ValueError('Valid program initializations methods include '
                              '"grow", "full" and "half and half". Given %s.'
                              % self.init_method)
@@ -811,6 +809,7 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
                  p_point_mutation=0.01,
                  p_point_replace=0.05,
                  max_samples=1.0,
+                 dimensional_max_power=None,
                  feature_names=None,
                  warm_start=False,
                  low_memory=False,
@@ -834,6 +833,7 @@ class SymbolicRegressor(BaseSymbolic, RegressorMixin):
             p_point_mutation=p_point_mutation,
             p_point_replace=p_point_replace,
             max_samples=max_samples,
+            dimensional_max_power=dimensional_max_power,
             feature_names=feature_names,
             warm_start=warm_start,
             low_memory=low_memory,

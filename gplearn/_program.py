@@ -15,8 +15,8 @@ import numpy as np
 from sklearn.utils.random import sample_without_replacement
 
 from .functions import _Function
-from .utils import check_random_state, NotCompatibleParents
-import dimensional
+from .utils import check_random_state
+from .dimensional import build_dimensional_program
 
 
 class _Program(object):
@@ -206,7 +206,7 @@ class _Program(object):
                 self.dimensional_quantities_units)
 
     def __build_program_dimensional(self, random_state, max_depth, required_units, quantities_units):
-        return dimensional.build_program(
+        return build_dimensional_program(
             required_units,
             quantities_units,
             max_depth,
@@ -266,9 +266,9 @@ class _Program(object):
     def validate_program(self):
         """Rough check that the embedded program in the object is valid."""
         terminals = [0]
-        for node in self.program:
-            if isinstance(node, _Function):
-                terminals.append(node.arity)
+        for symbol, dimensions in self.program:
+            if isinstance(symbol, _Function):
+                terminals.append(symbol.arity)
             else:
                 terminals[-1] -= 1
                 while terminals[-1] == 0:
@@ -280,7 +280,7 @@ class _Program(object):
         """Overloads `print` output of the object to resemble a LISP tree."""
         terminals = [0]
         output = ''
-        for i, node in enumerate(self.program):
+        for i, (node, dimensions) in enumerate(self.program):
             if isinstance(node, _Function):
                 terminals.append(node.arity)
                 output += node.name + '('
@@ -320,7 +320,7 @@ class _Program(object):
         if fade_nodes is None:
             fade_nodes = []
         output = 'digraph program {\nnode [style=filled]\n'
-        for i, node in enumerate(self.program):
+        for i, (node, dimensions)  in enumerate(self.program):
             fill = '#cecece'
             if isinstance(node, _Function):
                 if i not in fade_nodes:
@@ -367,7 +367,7 @@ class _Program(object):
             program = self.program
         terminals = [0]
         depth = 1
-        for node in program:
+        for node, dimensions in program:
             if isinstance(node, _Function):
                 terminals.append(node.arity)
                 depth = max(len(terminals), depth)
@@ -399,14 +399,14 @@ class _Program(object):
         """
         # Check for single-node programs
         node = self.program[0]
-        if isinstance(node, float):
-            return np.repeat(node, X.shape[0])
-        if isinstance(node, int):
-            return X[:, node]
+        if isinstance(node[0], float):
+            return np.repeat(node[0], X.shape[0])
+        if isinstance(node[0], int):
+            return X[:, node[0]]
 
         apply_stack = []
 
-        for node in self.program:
+        for node, dimensions in self.program:
 
             if isinstance(node, _Function):
                 apply_stack.append([node])
