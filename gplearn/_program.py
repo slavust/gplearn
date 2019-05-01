@@ -9,7 +9,7 @@ computer program. It is used for creating and evolving programs used in the
 #
 # License: BSD 3 clause
 
-from copy import copy
+from copy import deepcopy
 
 import numpy as np
 from sklearn.utils.random import sample_without_replacement
@@ -407,7 +407,7 @@ class _Program(object):
         apply_stack = []
 
         for node, dimensions in self.program:
-
+            assert node is not None
             if isinstance(node, _Function):
                 apply_stack.append([node])
             else:
@@ -421,6 +421,7 @@ class _Program(object):
                              else X[:, t] if isinstance(t, int)
                              else t for t in apply_stack[-1][1:]]
                 intermediate_result = function(*terminals)
+                assert intermediate_result is not None
                 if len(apply_stack) != 1:
                     apply_stack.pop()
                     apply_stack[-1].append(intermediate_result)
@@ -547,12 +548,14 @@ class _Program(object):
             The indices of the start and end of the random subtree.
 
         """
+        assert isinstance(units, tuple)
         if program is None:
             program = self.program
 
         if units:
             probs = list()
             for symbol, dimensionality in program:
+                assert isinstance(dimensionality, tuple)
                 if dimensionality != units:
                     probs.append(0.0)
                 elif isinstance(symbol, _Function):
@@ -570,7 +573,7 @@ class _Program(object):
         stack = 1
         end = start
         while stack > end - start:
-            node = program[end]
+            node = program[end][0]
             if isinstance(node, _Function):
                 stack += node.arity
             end += 1
@@ -579,7 +582,7 @@ class _Program(object):
 
     def reproduce(self):
         """Return a copy of the embedded program."""
-        return copy(self.program)
+        return deepcopy(self.program)
 
     def get_donor_acceptance_func(self):
         """Return function that tests other programs for
@@ -617,9 +620,13 @@ class _Program(object):
         removed = range(start, end)
         # Get a subtree to donate
         donor_program = donor.program
-        donor_start, donor_end, _ = self.get_subtree(random_state, donor_program, chosen_units)
+        donor_start, donor_end = self.get_subtree(random_state, donor_program, chosen_units)
         donor_removed = list(set(range(len(donor_program))) -
                              set(range(donor_start, donor_end)))
+
+        if start != end-1 or donor_start != donor_end-1:
+            print('good crossover:', self.program[start][1])
+
         # Insert genetic material from donor
         return (self.program[:start] +
                 donor_program[donor_start:donor_end] +
@@ -647,9 +654,11 @@ class _Program(object):
 
         """
         range_start, range_end = self.get_subtree(random_state)
+        removed = range(range_start, range_end)
         dimension = self.program[range_start][1]
-        depth = self._depth(program=self.program[range_start:range_end])
-        new_subtree = dimensional.build_program(
+        max_subtree_depth = self._depth(program=self.program[range_start:range_end])
+        depth = random_state.randint(0, max_subtree_depth) if max_subtree_depth != 0 else 0
+        new_subtree = build_dimensional_program(
             dimension,
             self.dimensional_quantities_units,
             depth,
@@ -658,7 +667,7 @@ class _Program(object):
             self.const_range,
             self.function_set,
             random_state)
-        return self.program[:range_start] + new_subtree + self.program[range_end:]
+        return self.program[:range_start] + new_subtree + self.program[range_end:], removed
 
     def hoist_mutation(self, random_state):
         """Perform the hoist mutation operation on the program.
@@ -715,7 +724,7 @@ class _Program(object):
         """
         program = deepcopy(self.program)
         mutation_possibilities = list()
-        for symbol, dimensions in self.program:
+        for symbol, dimensions in program:
             nondimensional = not dimensions or all([power == 0 for power in dimensions])
             if nondimensional:
                 if isinstance(symbol, _Function):
@@ -724,6 +733,7 @@ class _Program(object):
                     mutation_possibilities.append('any_nondim_term')
             else:
                 if isinstance(symbol, _Function):
+                    # dimensional pow and mul mutation will result to incorrect dimensionality
                     change_will_invalidate = symbol.name in ['pow', 'mul']
                     if change_will_invalidate:
                         mutation_possibilities.append('none')
@@ -753,42 +763,46 @@ class _Program(object):
         except ValueError:
             sub_func = None
 
-        is_term_nondim = lambda term: not term or tuple(term) == (0) * len(term)
-        nondimentional_term_indices = np.nonzero(
-            [is_term_nondim(self.dimensional_quantities_units[i])
-             for i in range(self.n_features)])
+        is_term_nondim = lambda term_dim: not term_dim or all([power == 0 for power in term_dim])
+        nondimentional_term_indices = [i for i in range(self.n_features)
+                                       if is_term_nondim(self.dimensional_quantities_units[i])]
         if self.const_range is not None:
             nondimentional_term_indices += [self.n_features]
 
         for node in mutate:
+            node_n_dim = list(program[node])
             possibility_to_mutate = mutation_possibilities[node]
             if possibility_to_mutate == 'any_func':
-                assert isinstance(program[node][0], _Program)
-                arity = program[node][0].arity
+                assert isinstance(node_n_dim[0], _Function)
+                arity = node_n_dim[0].arity
                 # Find a valid replacement with same arity
                 replacement = len(self.arities[arity])
                 replacement = random_state.randint(replacement)
                 replacement = self.arities[arity][replacement]
-                program[node][0] = replacement
+                node_n_dim[0] = replacement
             elif possibility_to_mutate == 'arithm':
-                assert isinstance(program[node][0], _Program)
-                assert program[node][0] in [add_func, sub_func]
-                if program[node][0] == add_func and sub_func is not None:
-                        program[node][0] = sub_func
-                elif program[node][0] == sub_func and add_func is not None:
-                        program[node][0] = add_func
+                assert isinstance(node_n_dim[0], _Function)
+                assert node_n_dim[0].name in ['add', 'sub']
+                if node_n_dim[0].name == 'add' and sub_func is not None:
+                        node_n_dim[0] = sub_func
+                elif node_n_dim[0].name == 'sub' and add_func is not None:
+                        node_n_dim[0] = add_func
             elif possibility_to_mutate == 'any_nondim_term':
                 # there should be at least one nondimensional term if we got here
                 assert len(nondimentional_term_indices) != 0
                 terminal = nondimentional_term_indices[
-                    np.randint(len(nondimentional_term_indices))]
+                    random_state.randint(len(nondimentional_term_indices))]
                 if terminal == self.n_features:
                     terminal = random_state.uniform(*self.const_range)
                     if self.const_range is None:
                         # We should never get here
                         raise ValueError('A constant was produced with '
                                          'const_range=None.')
-                program[node][0] = terminal
+                node_n_dim[0] = terminal
+            assert isinstance(node_n_dim[0], int) \
+                   or isinstance(node_n_dim[0], float) \
+                   or isinstance(node_n_dim[0], _Function)
+            program[node] = tuple(node_n_dim)
         return program, list(mutate)
 
     depth_ = property(_depth)

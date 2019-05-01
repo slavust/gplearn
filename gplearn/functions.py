@@ -11,6 +11,8 @@ own custom functions.
 
 import numpy as np
 
+import warnings
+
 __all__ = ['make_function']
 
 
@@ -133,11 +135,15 @@ def _sigmoid(x1):
         return 1 / (1 + np.exp(-x1))
 
 
+def pow_custom(x1, x2):
+    return np.sign(x1) * np.power((np.abs(x1)), x2)
+
+
 add2 = make_function(function=np.add, name='add', arity=2)
 sub2 = make_function(function=np.subtract, name='sub', arity=2)
 mul2 = make_function(function=np.multiply, name='mul', arity=2)
 div2 = make_function(function=_protected_division, name='div', arity=2)
-pow2 = make_function(function=np.power, name='pow', arity=2)
+pow2 = make_function(function=pow_custom, name='pow', arity=2)
 sqrt1 = make_function(function=_protected_sqrt, name='sqrt', arity=1)
 log1 = make_function(function=_protected_log, name='log', arity=1)
 neg1 = make_function(function=np.negative, name='neg', arity=1)

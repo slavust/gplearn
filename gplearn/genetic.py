@@ -32,6 +32,10 @@ __all__ = ['SymbolicRegressor', 'SymbolicClassifier', 'SymbolicTransformer']
 
 MAX_INT = np.iinfo(np.int32).max
 
+def workaround_penaltize_nans(fitness, greater_is_better):
+    # TODO: fix nans, or maybe not so brutally
+    nan_penalty = np.NINF if greater_is_better else np.PINF
+    return nan_penalty if np.isnan(fitness) else fitness
 
 def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
     """Private function used to build a batch of programs within a job."""
@@ -63,7 +67,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
         else:
             acceptables = parents
         contenders = random_state.randint(0, len(acceptables), tournament_size)
-        fitness = [acceptables[a].fitness_ for a in contenders]
+        fitness = [workaround_penaltize_nans(acceptables[a].fitness_, metric.greater_is_better) for a in contenders]
         if metric.greater_is_better:
             parent_index = contenders[np.argmax(fitness)]
         else:
@@ -96,7 +100,7 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
                           'donor_nodes': remains}
             elif method < method_probs[1]:
                 # subtree_mutation
-                program, removed, _ = parent.subtree_mutation(random_state)
+                program, removed = parent.subtree_mutation(random_state)
                 genome = {'method': 'Subtree Mutation',
                           'parent_idx': parent_index,
                           'parent_nodes': removed}
@@ -493,7 +497,8 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
             # Reduce, maintaining order across different n_jobs
             population = list(itertools.chain.from_iterable(population))
 
-            fitness = [program.raw_fitness_ for program in population]
+            fitness = [workaround_penaltize_nans(program.raw_fitness_, self._metric.greater_is_better)
+                       for program in population]
             length = [program.length_ for program in population]
 
             parsimony_coefficient = None
@@ -527,6 +532,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
                 best_program = population[np.argmax(fitness)]
             else:
                 best_program = population[np.argmin(fitness)]
+            print('fitness:', fitness)
 
             self.run_details_['generation'].append(gen)
             self.run_details_['average_length'].append(np.mean(length))
@@ -542,6 +548,7 @@ class BaseSymbolic(BaseEstimator, metaclass=ABCMeta):
 
             if self.verbose:
                 self._verbose_reporter(self.run_details_)
+                print(str(best_program))
 
             # Check for early stopping
             if self._metric.greater_is_better:

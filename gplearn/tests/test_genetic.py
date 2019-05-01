@@ -447,7 +447,7 @@ def test_genetic_operations():
                  ['sub', 2, 7])
     assert_equal(gp.program, test_gp)
     assert_equal([f.name if isinstance(f, _Function) else f
-                  for f in gp.subtree_mutation(random_state)[0]],
+                  for f, _ in gp.subtree_mutation(random_state)[0]],
                  ['mul', 'div', 8, 1, 'sub', 'sub', 3, 5, 'add', 6, 3])
     assert_equal(gp.program, test_gp)
     assert_equal([f.name if isinstance(f, _Function) else f
