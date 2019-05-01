@@ -624,7 +624,7 @@ class _Program(object):
         donor_removed = list(set(range(len(donor_program))) -
                              set(range(donor_start, donor_end)))
 
-        if start != end-1 or donor_start != donor_end-1:
+        if start != end-1 or donor_start != donor_end-1 and donor != self:
             print('good crossover:', self.program[start][1])
 
         # Insert genetic material from donor
@@ -653,6 +653,7 @@ class _Program(object):
             The flattened tree representation of the program.
 
         """
+        print('subtree_mutation')
         range_start, range_end = self.get_subtree(random_state)
         removed = range(range_start, range_end)
         dimension = self.program[range_start][1]
