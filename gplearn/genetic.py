@@ -60,19 +60,25 @@ def _parallel_evolve(n_programs, parents, X, y, sample_weight, seeds, params):
 
     max_samples = int(max_samples * n_samples)
 
-    def _tournament(acceptance_func = None):
+    def _tournament(donor_estim_func=None):
         """Find the fittest individual from a sub-population."""
-        if acceptance_func is not None:
-            acceptables = [p for p in parents if acceptance_func(p)]
+        if donor_estim_func is None:
+            contenders = random_state.randint(0, len(parents), tournament_size)
         else:
-            acceptables = parents
-        contenders = random_state.randint(0, len(acceptables), tournament_size)
-        fitness = [workaround_penaltize_nans(acceptables[a].fitness_, metric.greater_is_better) for a in contenders]
+            # give more chances to nice crossover :)
+            estims = np.array([donor_estim_func(parent) for parent in parents])
+            estims /= np.sum(estims)
+            roulette = np.cumsum(estims)
+            contenders = np.searchsorted(roulette, [random_state.uniform(size=tournament_size)])[0]
+            for cont in contenders:
+                assert estims[cont] != 0
+        fitness = [workaround_penaltize_nans(parents[indx].fitness_, metric.greater_is_better) for indx in contenders]
         if metric.greater_is_better:
             parent_index = contenders[np.argmax(fitness)]
         else:
             parent_index = contenders[np.argmin(fitness)]
-        return acceptables[parent_index], parents.index(acceptables[parent_index])
+
+        return parents[parent_index], parent_index
 
     # Build programs
     programs = []

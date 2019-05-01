@@ -162,7 +162,7 @@ class _Program(object):
             # Create a naive random program
             self.program = self.build_program(
                 random_state)
-        self.units_set = self.build_units_set()
+        self.units_cross_chances = self.build_units_cross_chances()
 
         self.raw_fitness_ = None
         self.fitness_ = None
@@ -257,11 +257,16 @@ class _Program(object):
         # We should never get here
         return None
 
-    def build_units_set(self):
+    def build_units_cross_chances(self):
         # don't take into account root node
         # they are all same (at least should be)
-        units_set = set([node[1] for node in self.program[1:]])
-        return units_set
+        unit_chances = dict()
+        for symbol, dimensions in self.program[1:]:
+            if isinstance(symbol, _Function):
+                unit_chances[dimensions] = max(unit_chances.get(dimensions, 0.9), 0.9)
+            else:
+                unit_chances[dimensions] = max(unit_chances.get(dimensions, 0.1), 0.1)
+        return unit_chances
 
     def validate_program(self):
         """Rough check that the embedded program in the object is valid."""
@@ -588,7 +593,10 @@ class _Program(object):
         """Return function that tests other programs for
         acceptance to crossover"""
         def acceptance_func(program):
-            return len(self.units_set & program.units_set) > 0
+            acceptable_units = set(program.units_cross_chances.keys()) & set(self.units_cross_chances.keys())
+            donor_fitness = sum(self.units_cross_chances[units] + program.units_cross_chances[units]
+                                for units in acceptable_units)
+            return donor_fitness
         return acceptance_func
 
     def crossover(self, donor, random_state):
@@ -613,8 +621,14 @@ class _Program(object):
 
         """
         # Get a subtree to replace
-        acceptable_units = tuple(self.units_set & donor.units_set)
-        chosen_units = acceptable_units[random_state.randint(len(acceptable_units))]
+        acceptable_units = tuple(set(self.units_cross_chances.keys()) & set(donor.units_cross_chances.keys()))
+        assert len(acceptable_units) > 0
+        chances = np.array([self.units_cross_chances[unit]
+                            for unit in acceptable_units])
+        chances /= chances.sum()
+        units_roulette = np.cumsum(chances)
+        indx = np.searchsorted(units_roulette, random_state.uniform())
+        chosen_units = acceptable_units[indx]
 
         start, end = self.get_subtree(random_state, units=chosen_units)
         removed = range(start, end)
